@@ -6,6 +6,26 @@ require 'rubygems/package'
 require 'uri'
 
 class BundlerSourceAwsS3 < Bundler::Plugin::API
+  class S3AccessError < Bundler::BundlerError
+    attr_reader :uri, :aws_error
+
+    def initialize(uri, aws_error)
+      @uri = uri
+      @aws_error = aws_error
+    end
+
+    def message
+      "[aws-s3] Error: There was an error while trying to access S3 bucket `#{uri}`.\n" \
+      "Make sure you have correct S3 access via running aws cli locally.\n" \
+      " > Internal Error: #{aws_error}\n" \
+      "If you're using sso login, please run: aws sso login"
+    end
+    
+    def status_code
+      40
+    end
+  end
+
   class S3Source < Bundler::Source
     # Bundler plugin api, we need to install the gem for the given spec and
     # then call post_install.
@@ -92,7 +112,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     # we want to place our gems. This directory can hold multiple installed
     # gems.
     def install_path
-      @install_path ||= gem_install_dir.join(bucket).join(path)
+      @install_path ||= Bundler.home.join("s3-gems").join(bucket).join(path)
     end
 
     # This is the path to the s3 gems for our source uri. We will pull the s3
@@ -112,7 +132,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       Bundler.mkdir_p(s3_gems_path)
 
       unless @pull = Open3.capture2(sync_cmd).last.success?
-        raise "[aws-s3] #{sync_cmd.inspect} failed."
+        raise S3AccessError.new(uri, "#{sync_cmd.inspect} failed.")
       end
     end
 
