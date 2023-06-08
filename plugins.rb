@@ -64,6 +64,11 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       end
     end
 
+    def app_cache_dirname
+      base_name = File.basename(Bundler::URI.parse(uri).normalize.host)
+      "s3-#{base_name}-#{uri_hash}"
+    end
+
     # Bundler calls this to tell us fetching remote gems is okay.
     def remote!
       @remote = true
@@ -138,7 +143,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     def sync_gems
       success = Open3.capture2(sync_cmd).last.success?
-      unless success
+      if !success && `grep -q "sso_start_url" ~/.aws/config`
         `aws sso login`
         success = Open3.capture2(sync_cmd).last.success?
       end
