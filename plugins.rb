@@ -66,7 +66,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     def app_cache_dirname
       base_name = File.basename(Bundler::URI.parse(uri).normalize.host)
-      "s3-#{base_name}-#{uri_hash}"
+      "s3-#{base_name}"
     end
 
     # Bundler calls this to tell us fetching remote gems is okay.
@@ -76,6 +76,14 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     def remote?
       @remote ||= false
+    end
+
+    def cache(spec, custom_path = nil)
+      new_cache_path = app_cache_path(custom_path)
+      gem_filename = spec.full_name + '.gem'
+      FileUtils.mkdir_p(new_cache_path)
+      FileUtils.touch(app_cache_path.join(".bundlecache"))
+      FileUtils.cp(s3_gems_path.join('gems').join(gem_filename), new_cache_path.join(gem_filename))
     end
 
     # TODO What is bundler telling us if unlock! is called?
@@ -136,18 +144,21 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
       Bundler.mkdir_p(s3_gems_path)
 
-      unless @pull = sync_gems
-        raise S3AccessError.new(uri, "#{sync_cmd.inspect} failed.")
-      end
+      @pull = sync_gems
     end
 
     def sync_gems
-      success = Open3.capture2(sync_cmd).last.success?
-      if !success && `grep -q "sso_start_url" ~/.aws/config`
+      log, res = Open3.capture2e(sync_cmd)
+      return true if res.success?
+
+      if `grep -q "sso_start_url" ~/.aws/config`
+        Bundler.ui.info "`#{sync_cmd}` failed. Trying `aws sso login`..."
         `aws sso login`
-        success = Open3.capture2(sync_cmd).last.success?
+        log, res = Open3.capture2e(sync_cmd)
+        return if res.success?
       end
-      success
+
+      raise S3AccessError.new(uri, "#{sync_cmd.inspect} failed. #{log}")
     end
 
     # Produces a list of Gem::Package for the s3 gems.
