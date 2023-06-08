@@ -20,7 +20,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       " > Internal Error: #{aws_error}\n" \
       "If you're using sso login, please run: aws sso login"
     end
-    
+
     def status_code
       40
     end
@@ -131,9 +131,18 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
       Bundler.mkdir_p(s3_gems_path)
 
-      unless @pull = Open3.capture2(sync_cmd).last.success?
+      unless @pull = sync_gems
         raise S3AccessError.new(uri, "#{sync_cmd.inspect} failed.")
       end
+    end
+
+    def sync_gems
+      success = Open3.capture2(sync_cmd).last.success?
+      unless success
+        `aws sso login`
+        success = Open3.capture2(sync_cmd).last.success?
+      end
+      success
     end
 
     # Produces a list of Gem::Package for the s3 gems.
