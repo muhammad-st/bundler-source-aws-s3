@@ -90,6 +90,11 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       "aws-s3 plugin with uri #{uri}"
     end
 
+    def fetch_spec(spec_tuple)
+      full_spec_name = spec_tuple.compact.join('-')
+      fetch_bundler_object("quick/Marshal.#{Gem.marshal_version}/#{full_spec_name}.gemspec.rz")
+    end
+
     private
 
     def fetch_bundler_object(path)
@@ -110,11 +115,6 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       else
         Bundler::RemoteSpecification.new(name, version, platform, self)
       end
-    end
-
-    def fetch_spec(spec_tuple)
-      full_spec_name = spec_tuple.compact.join('-')
-      fetch_bundler_object("quick/Marshal.#{Gem.marshal_version}/#{full_spec_name}.gemspec")
     end
 
     def remote_specs
