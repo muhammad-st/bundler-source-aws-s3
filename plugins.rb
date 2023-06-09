@@ -98,7 +98,8 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
         system("aws s3 cp #{full_path} #{file.path}")
         file.path
           .yield_self { |p| Gem.read_binary(p) }
-          .yield_self { |bin| path.match?(/\.gz|\.rz$/) ? Bundler.rubygems.inflate(bin) : bin }
+          .yield_self { |bin| path.end_with?('.rz') ? Bundler.rubygems.inflate(bin) : bin }
+          .yield_self { |bin| path.end_with?('.gz') ? Gem::Util.gunzip(bin) : bin }
           .yield_self { |marshal_data| Bundler.load_marshal marshal_data }
       end
     end
