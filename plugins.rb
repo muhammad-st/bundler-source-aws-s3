@@ -112,11 +112,16 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       end
     end
 
+    def fetch_spec(spec_tuple)
+      full_spec_name = spec_tuple.compact.join('-')
+      fetch_bundler_object("quick/Marshal.#{Gem.marshal_version}/#{full_spec_name}.gemspec")
+    end
+
     def remote_specs
       @remote_specs ||=
         Bundler::Index.build do |index|
-          specs_array = fetch_bundler_object("specs.#{Gem.marshal_version}.gz")
-          specs = specs_array.map do |args|
+          specs_tuple = fetch_bundler_object("specs.#{Gem.marshal_version}.gz")
+          specs = specs_tuple.map do |args|
             spec_from_args(*args).tap do |spec|
               spec.source = self
               spec.remote = uri # TODO use Remote obj
