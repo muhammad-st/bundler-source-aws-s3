@@ -46,21 +46,14 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     # Bundler plugin api, we need to return a Bundler::Index
     def specs
-      # Only pull gems if bundler tells us to check remote
-      pull if remote?
-
-      # We haven't pulled any s3 gems if the directory doesn't exist, so we'll
-      # give bundler an empty index.
-      return Bundler::Index.new unless File.directory?(s3_gems_path)
-
-      Bundler::Index.build do |index|
-        packages.map(&:spec).each do |spec|
-          spec.source = self
-          spec.loaded_from = loaded_from_for(spec)
-
-          Bundler.rubygems.validate(spec)
-          index << spec
-        end
+      @specs ||= begin
+        # remote_specs usually generates a way larger Index than the other
+        # sources, and large_idx.use small_idx is way faster than
+        # small_idx.use large_idx.
+        idx = @allow_remote ? remote_specs.dup : Index.new
+        idx.use(cached_specs, :override_dupes) if @allow_cached || @allow_remote
+        idx.use(installed_specs, :override_dupes)
+        idx
       end
     end
 
@@ -71,11 +64,8 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     # Bundler calls this to tell us fetching remote gems is okay.
     def remote!
-      @remote = true
-    end
-
-    def remote?
-      @remote ||= false
+      @specs = nil
+      @allow_remote = true
     end
 
     def cache(spec, custom_path = nil)
@@ -86,14 +76,14 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       FileUtils.cp(s3_gems_path.join('gems').join(gem_filename), new_cache_path.join(gem_filename))
     end
 
-    # TODO What is bundler telling us if unlock! is called?
     def unlock!
-      puts "[aws-s3] DEBUG: unlock! called"
+      FileUtils.rm_rf(install_path)
+      @specs = nil
     end
 
-    # TODO What is bundler telling us if cached! is called?
     def cached!
-      puts "[aws-s3] DEBUG: cached! called"
+      @specs = nil
+      @allow_cached = true
     end
 
     def to_s
@@ -101,6 +91,47 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     end
 
     private
+
+    def remote_specs
+      @remote_specs ||=
+        Bundler::Index.build do |index|
+          packages.map(&:spec).each do |spec|
+            spec.source = self
+            spec.loaded_from = loaded_from_for(spec)
+
+            Bundler.rubygems.validate(spec)
+            index << spec
+          end
+        end
+    end
+
+    def installed_specs
+      @installed_specs ||= Index.build do |idx|
+        Dir["#{install_path}/*.gem"].each do |gemfile|
+          spec = Bundler.rubygems.spec_from_gem(gemfile)
+          spec.source = self
+          spec.loaded_from = loaded_from_for(spec)
+
+          idx << spec
+        end
+      end
+    end
+
+    def cached_specs
+      @cached_specs ||= begin
+        idx = installed_specs.dup
+
+        Dir["#{app_cache_path}/*.gem"].each do |gemfile|
+          spec = Bundler.rubygems.spec_from_gem(gemfile)
+          spec.source = self
+
+          spec.loaded_from = loaded_from_for(spec)
+          idx << spec
+        end
+
+        idx
+      end
+    end
 
     # This is a guard against attempting to install a spec that doesn't match
     # our requirements / expectations.
