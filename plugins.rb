@@ -50,7 +50,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
         # remote_specs usually generates a way larger Index than the other
         # sources, and large_idx.use small_idx is way faster than
         # small_idx.use large_idx.
-        idx = @allow_remote ? remote_specs.dup : Index.new
+        idx = @allow_remote ? remote_specs.dup : Bundler::Index.new
         idx.use(cached_specs, :override_dupes) if @allow_cached || @allow_remote
         idx.use(installed_specs, :override_dupes)
         idx
@@ -106,7 +106,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     end
 
     def installed_specs
-      @installed_specs ||= Index.build do |idx|
+      @installed_specs ||= Bundler::Index.build do |idx|
         Dir["#{install_path}/*.gem"].each do |gemfile|
           spec = Bundler.rubygems.spec_from_gem(gemfile)
           spec.source = self
