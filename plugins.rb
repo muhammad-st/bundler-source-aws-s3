@@ -29,7 +29,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
   class S3Source < Bundler::Source
     # Bundler plugin api, we need to install the gem for the given spec and
     # then call post_install.
-    def install(spec, opts)
+    def install(spec, _opts)
       print_using_message "Using #{spec.name} #{spec.version} from #{self}"
 
       validate!(spec)
@@ -70,9 +70,9 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     def cache(spec, custom_path = nil)
       new_cache_path = app_cache_path(custom_path)
-      gem_filename = spec.full_name + '.gem'
+      gem_filename = "#{spec.full_name}.gem"
       FileUtils.mkdir_p(new_cache_path)
-      FileUtils.touch(app_cache_path.join(".bundlecache"))
+      FileUtils.touch(app_cache_path.join('.bundlecache'))
       FileUtils.cp(s3_gems_path.join('gems').join(gem_filename), new_cache_path.join(gem_filename))
     end
 
@@ -92,16 +92,21 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     private
 
+    def fetch_bundler_object(path)
+      full_path = URI.parse(uri).join(path).to_s
+      Tempfile.create("aws-s3-#{bucket}-specs") do |file|
+        system("aws s3 cp #{full_path} #{file.path}")
+        file.path
+          .yield_self { |p| Gem.read_binary(p) }
+          .yield_self { |bin| path.match?(/\.gz|\.rz$/) ? Bundler.rubygems.inflate(bin) : bin }
+          .yield_self { |marshal_data| Bundler.load_marshal marshal_data }
+      end
+    end
+
     def remote_specs
       @remote_specs ||=
         Bundler::Index.build do |index|
-          packages.map(&:spec).each do |spec|
-            spec.source = self
-            spec.loaded_from = loaded_from_for(spec)
-
-            Bundler.rubygems.validate(spec)
-            index << spec
-          end
+          index.use fetch_bundler_object("specs.#{Gem.marshal_version}.gz")
         end
     end
 
@@ -139,9 +144,9 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     # If we want to be more trusting, we could probably safely remove this
     # method.
     def validate!(spec)
-      unless spec.source == self && spec.loaded_from == loaded_from_for(spec)
-        raise "[aws-s3] Error #{spec.full_name} spec is not valid"
-      end
+      return if spec.source == self && spec.loaded_from == loaded_from_for(spec)
+
+      raise "[aws-s3] Error #{spec.full_name} spec is not valid"
     end
 
     # We will use this value as the given spec's loaded_from. It should be the
@@ -156,14 +161,15 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     # we want to place our gems. This directory can hold multiple installed
     # gems.
     def install_path
-      @install_path ||= Bundler.home.join("s3-gems").join(bucket).join(path)
+      @install_path ||= Bundler.home.join('s3-gems').join(bucket).join(path)
     end
 
     # This is the path to the s3 gems for our source uri. We will pull the s3
     # gems into this directory.
     def s3_gems_path
-      Bundler.user_bundle_path.
-        join('bundler-source-aws-s3').join(bucket).join(path)
+      Bundler
+        .user_bundle_path
+        .join('bundler-source-aws-s3').join(bucket).join(path)
     end
 
     # Pull s3 gems from the source and store them in
@@ -182,9 +188,9 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       log, res = Open3.capture2e(sync_cmd)
       return true if res.success?
 
-      if `grep -q "sso_start_url" ~/.aws/config`
+      if system('grep -q "sso_start_url" ~/.aws/config')
         Bundler.ui.info "`#{sync_cmd}` failed. Trying `aws sso login`..."
-        `aws sso login`
+        system('aws sso login')
         log, res = Open3.capture2e(sync_cmd)
         return if res.success?
       end
@@ -194,10 +200,10 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
 
     # Produces a list of Gem::Package for the s3 gems.
     def packages
-      @packages ||= Dir.entries(s3_gems_path.join('gems')).
-        map { |entry| s3_gems_path.join('gems').join(entry) }.
-        select { |gem_path| File.file?(gem_path) }.
-        map { |gem_path| Gem::Package.new(gem_path.to_s) }
+      @packages ||= Dir[s3_gems_path.join('gems')]
+        .map { |entry| s3_gems_path.join('gems').join(entry) }
+        .select { |gem_path| File.file?(gem_path) }
+        .map { |gem_path| Gem::Package.new(gem_path.to_s) }
     end
 
     # Find the Gem::Package for a given spec.
