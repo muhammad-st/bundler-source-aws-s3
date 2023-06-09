@@ -104,21 +104,25 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
       end
     end
 
+    def spec_from_array(name, version, platform, dependencies, metadata)
+      if dependencies
+        Bundler::EndpointSpecification.new(name, version, platform, dependencies, metadata)
+      else
+        Bundler::RemoteSpecification.new(name, version, platform, self)
+      end
+    end
+
     def remote_specs
       @remote_specs ||=
         Bundler::Index.build do |index|
           specs_array = fetch_bundler_object("specs.#{Gem.marshal_version}.gz")
-          index.use specs_array.map do |name, version, platform, dependencies, metadata|
-            spec = if dependencies
-              Bundler::EndpointSpecification.new(name, version, platform, dependencies, metadata)
-            else
-              Bundler::RemoteSpecification.new(name, version, platform, self)
+          specs = specs_array.map do |*args|
+            spec_from_array(args).tap do |spec|
+              spec.source = self
+              spec.remote = uri # TODO use Remote obj
             end
-            spec.source = self
-            spec.remote = uri # TODO use Remote obj
-
-            spec
           end
+          index.use specs
         end
     end
 
