@@ -93,7 +93,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     private
 
     def fetch_bundler_object(path)
-      full_path = URI.parse(uri).join(path).to_s
+      full_path = URI.join(uri, path).to_s
       Tempfile.create("aws-s3-#{bucket}-specs") do |file|
         system("aws s3 cp #{full_path} #{file.path}")
         file.path
