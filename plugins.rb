@@ -91,7 +91,7 @@ class BundlerSourceAwsS3 < Bundler::Plugin::API
     end
 
     def fetch_spec(spec_tuple)
-      full_spec_name = spec_tuple.compact.join('-')
+      full_spec_name = (spec_tuple - [nil, "ruby", ""]).compact.join('-')
       fetch_bundler_object("quick/Marshal.#{Gem.marshal_version}/#{full_spec_name}.gemspec.rz")
     end
 
